@@ -67,12 +67,12 @@ void Error_Handler(void);
 #define AMPON_GPIO_Port GPIOA
 #define DACOUT_Pin GPIO_PIN_4
 #define DACOUT_GPIO_Port GPIOA
-#define VOLUP_Pin GPIO_PIN_6
-#define VOLUP_GPIO_Port GPIOA
-#define VOLUP_EXTI_IRQn EXTI4_15_IRQn
-#define VOLDN_Pin GPIO_PIN_7
+#define VOLDN_Pin GPIO_PIN_6
 #define VOLDN_GPIO_Port GPIOA
 #define VOLDN_EXTI_IRQn EXTI4_15_IRQn
+#define VOLUP_Pin GPIO_PIN_7
+#define VOLUP_GPIO_Port GPIOA
+#define VOLUP_EXTI_IRQn EXTI4_15_IRQn
 #define BATLED_Pin GPIO_PIN_2
 #define BATLED_GPIO_Port GPIOD
 #define OPLED_Pin GPIO_PIN_3
