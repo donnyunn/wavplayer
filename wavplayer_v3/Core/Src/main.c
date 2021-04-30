@@ -31,6 +31,7 @@
 typedef enum {
   TASK_INIT = 0,
   TASK_IDLE,
+  TASK_CHARGE,
   TASK_PLAY,
 } task_t;
 typedef struct {
@@ -47,7 +48,7 @@ typedef struct {
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define VOLUME_MIN 0
-#define VOLUME_MAX 6
+#define VOLUME_MAX 4
 #define FLASH_PAGE_NUM 62
 #define ADDR_VOLUME_LEVEL (FLASH_PAGE_NUM * FLASH_PAGE_SIZE + FLASH_BASE)
 
@@ -90,7 +91,7 @@ app_t app = {
 uint16_t adcValue = 2048;
 uint16_t dacValue = 2048;
 uint16_t ptr_dac = 0;
-const uint8_t volume[7] = {5, 7, 10, 14, 20, 28, 40};
+const uint8_t volume[5] = {10, 20, 30, 40, 50};
 
 /* USER CODE END PV */
 
@@ -164,7 +165,7 @@ void saveVolumeLevel(void)
 
 void enterSleepMode(void)
 {
-  HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN1_HIGH);
+  HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN1_HIGH | PWR_WAKEUP_PIN4_HIGH);
   __HAL_RCC_PWR_CLK_ENABLE();
   HAL_Delay(500);
   HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFE);
@@ -235,7 +236,11 @@ int main(void)
         if (HAL_GPIO_ReadPin(PWR_BTN_GPIO_Port, PWR_BTN_Pin) != GPIO_PIN_RESET) {
           app.task = TASK_PLAY;
         } else {
-          app.task = TASK_IDLE;
+          if (HAL_GPIO_ReadPin(DCIN_GPIO_Port, DCIN_Pin) != GPIO_PIN_RESET) {
+            app.task = TASK_CHARGE;
+          } else {
+            app.task = TASK_IDLE;
+          }
         }
       break;
       case TASK_IDLE:
@@ -256,6 +261,46 @@ int main(void)
         enterSleepMode();
         HAL_Delay(100);
         HAL_NVIC_SystemReset();
+      break;
+      case TASK_CHARGE:
+        while(ptr_dac != 0);
+        HAL_TIM_Base_Stop_IT(&htim2);
+        ptr_dac = 0;
+        AMP_OFF();
+
+        while (app.task == TASK_CHARGE) {
+          if (app.battCheck) {
+            app.battCheck = false;
+            if (adcValue >= ADCVAL_CHARGED) {
+              LED_ON(OPLED_GPIO_Port, OPLED_Pin);
+              LED_OFF(BATLED_GPIO_Port, BATLED_Pin);
+
+            } else if (adcValue >= ADCVAL_LOWPWR) {
+              LED_ON(OPLED_GPIO_Port, OPLED_Pin);
+              LED_ON(BATLED_GPIO_Port, BATLED_Pin);
+              
+            } else if (adcValue >= ADCVAL_OFFPWR) {
+              LED_OFF(OPLED_GPIO_Port, OPLED_Pin);
+              LED_ON(BATLED_GPIO_Port, BATLED_Pin);
+
+            } else if (adcValue < ADCVAL_OFFPWR) {
+              for (int i = 0; i < 3; i++) {
+                LED_OFF(BATLED_GPIO_Port, BATLED_Pin); HAL_Delay(200);
+                LED_ON(BATLED_GPIO_Port, BATLED_Pin); HAL_Delay(200);
+              }
+              app.task = TASK_IDLE;
+            }
+          }
+            
+          if (app.pwrPressed) {
+            app.pwrPressed = false;
+            app.task = TASK_INIT;
+          }
+
+          if (HAL_GPIO_ReadPin(DCIN_GPIO_Port, DCIN_Pin) == GPIO_PIN_RESET) {
+            app.task = TASK_INIT;
+          }
+        }
       break;
       case TASK_PLAY:
 
@@ -285,9 +330,14 @@ int main(void)
             LED_ON(OPLED_GPIO_Port, OPLED_Pin);
           }
         }
+        
         if (app.pwrPressed) {
           app.pwrPressed = false;
-          app.task = TASK_IDLE;
+          if (HAL_GPIO_ReadPin(DCIN_GPIO_Port, DCIN_Pin) != GPIO_PIN_RESET) {
+            app.task = TASK_INIT;
+          } else {
+            app.task = TASK_IDLE;
+          }
         }
       break;
     }
@@ -375,7 +425,7 @@ static void MX_ADC1_Init(void)
   /** Configure the global features of the ADC (Clock, Resolution, Data Alignment and number of conversion)
   */
   hadc1.Instance = ADC1;
-  hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV2;
+  hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;
   hadc1.Init.Resolution = ADC_RESOLUTION_12B;
   hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
   hadc1.Init.ScanConvMode = ADC_SCAN_DISABLE;
@@ -662,17 +712,11 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOF, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PWR_BTN_Pin */
-  GPIO_InitStruct.Pin = PWR_BTN_Pin;
+  /*Configure GPIO pins : PWR_BTN_Pin DCIN_Pin */
+  GPIO_InitStruct.Pin = PWR_BTN_Pin|DCIN_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(PWR_BTN_GPIO_Port, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : DCIN_Pin */
-  GPIO_InitStruct.Pin = DCIN_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(DCIN_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pin : AMPON_Pin */
   GPIO_InitStruct.Pin = AMPON_Pin;
